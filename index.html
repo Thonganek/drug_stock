@@ -171,6 +171,11 @@
                 <button onclick="switchTab('import')" class="menu-item w-full text-left px-3 py-2 rounded-lg text-blue-600 bg-blue-50 hover:bg-blue-100 font-medium flex items-center gap-3 transition border border-blue-100">
                     <i class="fa-solid fa-file-excel w-5 text-center"></i> 5. นำเข้าข้อมูล (Import)
                 </button>
+
+                 <p class="px-3 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-4">Reports</p>
+                <button onclick="switchTab('alerts')" class="menu-item w-full text-left px-3 py-2 rounded-lg text-orange-600 bg-orange-50 hover:bg-orange-100 font-medium flex items-center gap-3 transition border border-orange-100">
+                    <i class="fa-solid fa-bell w-5 text-center"></i> 6. แจ้งเตือน (Alerts)
+                </button>
             </div>
         </aside>
 
@@ -434,6 +439,85 @@
                 </div>
             </div>
 
+            <!-- VIEW: ALERTS (NEW) -->
+            <div id="view-alerts" class="page-view admin-only hidden">
+                <div class="max-w-6xl mx-auto space-y-6">
+                    <div class="glass-panel p-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center text-orange-600 text-2xl">
+                                <i class="fa-solid fa-bell"></i>
+                            </div>
+                            <div>
+                                <h2 class="text-2xl font-bold text-gray-800">แจ้งเตือนสถานะคลังยา</h2>
+                                <p class="text-gray-500">รายการยาที่ต้องเฝ้าระวังและจัดการ</p>
+                            </div>
+                        </div>
+
+                        <!-- 1. ใกล้หมดอายุ -->
+                        <div class="mb-8">
+                            <h3 class="text-lg font-bold text-red-600 mb-3 border-b border-red-200 pb-2 flex items-center gap-2">
+                                <i class="fa-solid fa-hourglass-half"></i> รายการยาใกล้หมดอายุ (ภายใน 6 เดือน)
+                            </h3>
+                            <div class="overflow-x-auto border rounded-lg">
+                                <table class="w-full text-sm text-left" id="alert-expiry-table">
+                                    <thead class="bg-red-50 text-red-800 uppercase text-xs">
+                                        <tr>
+                                            <th class="px-4 py-3">ชื่อยา</th>
+                                            <th class="px-4 py-3">Lot No.</th>
+                                            <th class="px-4 py-3">วันหมดอายุ</th>
+                                            <th class="px-4 py-3 text-right">คงเหลือ</th>
+                                            <th class="px-4 py-3 text-center">คลัง</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y text-gray-600 bg-white">
+                                        <!-- JS Populate -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- 2. Main Stock Low -->
+                        <div class="mb-8">
+                            <h3 class="text-lg font-bold text-orange-600 mb-3 border-b border-orange-200 pb-2 flex items-center gap-2">
+                                <i class="fa-solid fa-warehouse"></i> Stock คลังใหญ่ ใกล้หมด (น้อยกว่า 500)
+                            </h3>
+                            <div class="overflow-x-auto border rounded-lg">
+                                <table class="w-full text-sm text-left" id="alert-low-main-table">
+                                    <thead class="bg-orange-50 text-orange-800 uppercase text-xs">
+                                        <tr>
+                                            <th class="px-4 py-3">ชื่อยา</th>
+                                            <th class="px-4 py-3">Lot No.</th>
+                                            <th class="px-4 py-3 text-right">คงเหลือ</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y text-gray-600 bg-white"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- 3. OPD Stock Low -->
+                        <div>
+                            <h3 class="text-lg font-bold text-yellow-600 mb-3 border-b border-yellow-200 pb-2 flex items-center gap-2">
+                                <i class="fa-solid fa-hospital-user"></i> Stock ห้องยา ใกล้หมด (น้อยกว่า 50)
+                            </h3>
+                            <div class="overflow-x-auto border rounded-lg">
+                                <table class="w-full text-sm text-left" id="alert-low-opd-table">
+                                    <thead class="bg-yellow-50 text-yellow-800 uppercase text-xs">
+                                        <tr>
+                                            <th class="px-4 py-3">ชื่อยา</th>
+                                            <th class="px-4 py-3 text-right">คงเหลือ</th>
+                                            <th class="px-4 py-3 text-center">สถานะ</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y text-gray-600 bg-white"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
         </main>
     </div>
 
@@ -479,6 +563,7 @@
                     stockData.logs = res.data.logs || [];
                     
                     renderDashboard();
+                    renderAlerts(); // Generate alerts on data load
                     Swal.close();
                 }
             } catch(e) { Swal.fire('Error', e.message, 'error'); }
@@ -501,6 +586,87 @@
             
             filterTables();
             updateSelectOptions();
+        }
+
+        function renderAlerts() {
+            const THRESHOLD_MAIN = 500;
+            const THRESHOLD_OPD = 50;
+            const today = new Date();
+            const sixMonthsLater = new Date();
+            sixMonthsLater.setMonth(today.getMonth() + 6);
+
+            // 1. Expiry Logic (Union of Main and OPD items with ExpDate)
+            // Flatten items to simple structure for display
+            let expiringItems = [];
+            
+            // Check Main
+            (stockData.main || []).forEach(i => {
+                if(i.ExpDate && i.Qty > 0) {
+                    const exp = new Date(i.ExpDate);
+                    if(exp <= sixMonthsLater) {
+                        expiringItems.push({ ...i, Source: 'Main' });
+                    }
+                }
+            });
+            // Check OPD
+            (stockData.opd || []).forEach(i => {
+                if(i.ExpDate && i.Qty > 0) {
+                     const exp = new Date(i.ExpDate);
+                    if(exp <= sixMonthsLater) {
+                        expiringItems.push({ ...i, Source: 'OPD' });
+                    }
+                }
+            });
+
+            const expiryTbody = document.getElementById('alert-expiry-table').querySelector('tbody');
+            expiryTbody.innerHTML = expiringItems.length ? '' : '<tr><td colspan="5" class="p-4 text-center text-gray-400">ไม่มีรายการใกล้หมดอายุ</td></tr>';
+            expiringItems.forEach(i => {
+                const diffTime = new Date(i.ExpDate) - today;
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                const textColor = diffDays < 0 ? 'text-red-700 font-bold' : 'text-orange-600';
+                
+                expiryTbody.innerHTML += `
+                    <tr class="border-b">
+                        <td class="px-4 py-2 font-medium">${i.TradeName || i.GenericName}</td>
+                        <td class="px-4 py-2 text-xs">${i.Lot}</td>
+                        <td class="px-4 py-2 ${textColor}">${formatDate(i.ExpDate)} <span class="text-xs">(${diffDays} วัน)</span></td>
+                        <td class="px-4 py-2 text-right font-bold">${Number(i.Qty).toLocaleString()}</td>
+                        <td class="px-4 py-2 text-center text-xs"><span class="badge ${i.Source === 'Main' ? 'bg-blue-100 text-blue-800' : 'bg-teal-100 text-teal-800'}">${i.Source}</span></td>
+                    </tr>
+                `;
+            });
+
+            // 2. Low Stock Main
+            const lowMain = (stockData.main || []).filter(i => i.Qty > 0 && i.Qty < THRESHOLD_MAIN);
+            const mainTbody = document.getElementById('alert-low-main-table').querySelector('tbody');
+            mainTbody.innerHTML = lowMain.length ? '' : '<tr><td colspan="3" class="p-4 text-center text-gray-400">ไม่มีรายการเหลือน้อย</td></tr>';
+            lowMain.forEach(i => {
+                 mainTbody.innerHTML += `
+                    <tr class="border-b">
+                        <td class="px-4 py-2 font-medium">${i.TradeName || i.GenericName}</td>
+                        <td class="px-4 py-2 text-xs text-gray-500">${i.Lot}</td>
+                        <td class="px-4 py-2 text-right font-bold text-orange-600">${Number(i.Qty).toLocaleString()}</td>
+                    </tr>
+                `;
+            });
+
+            // 3. Low Stock OPD
+            const lowOpd = (stockData.opd || []).filter(i => i.Qty > 0 && i.Qty < THRESHOLD_OPD);
+            const opdTbody = document.getElementById('alert-low-opd-table').querySelector('tbody');
+            opdTbody.innerHTML = lowOpd.length ? '' : '<tr><td colspan="3" class="p-4 text-center text-gray-400">ไม่มีรายการเหลือน้อย</td></tr>';
+            lowOpd.forEach(i => {
+                 opdTbody.innerHTML += `
+                    <tr class="border-b">
+                        <td class="px-4 py-2 font-medium">${i.TradeName || i.GenericName} <span class="text-xs text-gray-400">(${i.Lot})</span></td>
+                        <td class="px-4 py-2 text-right font-bold text-yellow-600">${Number(i.Qty).toLocaleString()}</td>
+                        <td class="px-4 py-2 text-center text-xs text-red-500 font-bold">เติมด่วน!</td>
+                    </tr>
+                `;
+            });
+            
+            // Update Dashboard Badge? (Optional)
+            const totalAlerts = expiringItems.length + lowMain.length + lowOpd.length;
+            document.getElementById('stat-expire').innerText = expiringItems.length.toLocaleString();
         }
 
         function renderTable(id, data, filter="") {
