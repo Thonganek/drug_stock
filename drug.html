@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบบริหารคลังยาและเวชภัณฑ์ (Professional Pharmacy Stock)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- SheetJS (XLSX) for Excel Import -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Sarabun', sans-serif; background-color: #f1f5f9; color: #334155; }
+        
+        /* Components */
+        .glass-panel { background: white; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border: 1px solid #e2e8f0; }
+        .btn-action { transition: all 0.2s; }
+        .btn-action:active { transform: scale(0.98); }
+        .modal-bg { background-color: rgba(15, 23, 42, 0.7); backdrop-filter: blur(4px); }
+        
+        /* Badges */
+        .badge { padding: 2px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 600; }
+        .badge-ed { background-color: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+        .badge-ned { background-color: #f3f4f6; color: #4b5563; border: 1px solid #d1d5db; }
+        .badge-vital { background-color: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+        
+        /* Form */
+        .form-label { display: block; font-size: 0.85rem; font-weight: 600; color: #475569; margin-bottom: 4px; }
+        .form-input { width: 100%; border-radius: 8px; border: 1px solid #cbd5e1; padding: 8px 12px; font-size: 0.9rem; transition: border-color 0.2s; }
+        .form-input:focus { outline: none; border-color: #0d9488; ring: 2px solid #0d9488; }
+        .form-section-title { font-size: 0.95rem; font-weight: 700; color: #0f766e; border-bottom: 2px solid #ccfbf1; padding-bottom: 4px; margin-bottom: 12px; margin-top: 8px; }
+
+        /* Helpers */
+        body:not(.logged-in) .admin-only { display: none !important; }
+        body.logged-in .public-only { display: none !important; }
+        .clickable-row:hover { background-color: #f0fdfa !important; cursor: pointer; }
+    </style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden">
+
+    <!-- LOGIN MODAL -->
+    <div id="login-modal" class="fixed inset-0 z-50 flex items-center justify-center modal-bg hidden">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-sm mx-4 relative">
+            <button onclick="toggleLoginModal(false)" class="absolute top-4 right-4 text-gray-400"><i class="fa-solid fa-times"></i></button>
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 bg-teal-50 rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-teal-100">
+                    <i class="fa-solid fa-user-doctor text-3xl text-teal-600"></i>
+                </div>
+                <h1 class="text-xl font-bold text-gray-800">เข้าสู่ระบบเภสัชกร</h1>
+            </div>
+            <form id="login-form" class="space-y-4">
+                <input type="text" id="username" class="form-input" placeholder="Username (admin)" value="admin">
+                <input type="password" id="password" class="form-input" placeholder="Password (1234)" value="1234">
+                <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2.5 rounded-lg shadow-md btn-action">Login</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- DETAIL MODAL (Full Standard Info) -->
+    <div id="detail-modal" class="fixed inset-0 z-50 flex items-center justify-center modal-bg hidden" onclick="if(event.target === this) toggleDetailModal(false)">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl mx-4 flex flex-col max-h-[90vh]">
+            <div class="px-6 py-4 border-b bg-gray-50 flex justify-between items-center rounded-t-xl">
+                <div class="flex items-center gap-3">
+                    <div class="bg-teal-100 p-2 rounded-lg text-teal-700"><i class="fa-solid fa-file-prescription text-xl"></i></div>
+                    <div>
+                        <h2 class="text-lg font-bold text-gray-800" id="detail-trade">-</h2>
+                        <p class="text-sm text-gray-500 font-medium" id="detail-generic">-</p>
+                    </div>
+                </div>
+                <button onclick="toggleDetailModal(false)" class="text-gray-400 hover:text-red-500"><i class="fa-solid fa-times text-xl"></i></button>
+            </div>
+            <div class="p-6 overflow-y-auto bg-slate-50">
+                <!-- Info Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <!-- 1. Clinical Info -->
+                    <div class="bg-white p-4 rounded-lg border shadow-sm">
+                        <h3 class="text-xs font-bold text-gray-400 uppercase mb-3">ข้อมูลทางคลินิก (Clinical)</h3>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex justify-between"><span class="text-gray-500">รูปแบบ (Form):</span> <span class="font-semibold" id="detail-form">-</span></div>
+                            <div class="flex justify-between"><span class="text-gray-500">ความแรง (Strength):</span> <span class="font-semibold" id="detail-strength">-</span></div>
+                            <div class="flex justify-between"><span class="text-gray-500">กลุ่มบัญชี:</span> <span id="detail-cat">-</span></div>
+                            <div class="flex justify-between"><span class="text-gray-500">ความสำคัญ (VED):</span> <span id="detail-ved">-</span></div>
+                        </div>
+                    </div>
+                    <!-- 2. Inventory Info -->
+                    <div class="bg-white p-4 rounded-lg border shadow-sm">
+                        <h3 class="text-xs font-bold text-gray-400 uppercase mb-3">สถานะคงคลัง (Inventory)</h3>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex justify-between"><span class="text-gray-500">Lot No.:</span> <span class="font-mono font-bold text-blue-600" id="detail-lot">-</span></div>
+                            <div class="flex justify-between"><span class="text-gray-500">วันหมดอายุ:</span> <span class="font-bold text-red-600" id="detail-exp">-</span></div>
+                            <div class="mt-2 pt-2 border-t flex justify-between items-end">
+                                <span class="text-gray-500">คงเหลือ:</span>
+                                <span class="text-2xl font-bold text-teal-700" id="detail-qty">0</span>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- 3. Procurement Info -->
+                    <div class="bg-white p-4 rounded-lg border shadow-sm">
+                        <h3 class="text-xs font-bold text-gray-400 uppercase mb-3">การจัดซื้อ (Procurement)</h3>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex justify-between"><span class="text-gray-500">ผู้ผลิต:</span> <span class="font-medium truncate w-32 text-right" id="detail-mfg">-</span></div>
+                            <div class="flex justify-between"><span class="text-gray-500">Invoice No.:</span> <span class="font-medium" id="detail-inv">-</span></div>
+                             <div class="flex justify-between"><span class="text-gray-500">ปีงบประมาณ:</span> <span class="font-medium" id="detail-budget">-</span></div>
+                            <div class="flex justify-between"><span class="text-gray-500">ราคา/หน่วย:</span> <span class="font-bold" id="detail-price">-</span></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- History Table -->
+                <div class="bg-white rounded-lg border shadow-sm overflow-hidden">
+                    <div class="px-4 py-2 bg-gray-100 border-b text-xs font-bold text-gray-500 uppercase">Transaction Log</div>
+                    <table class="w-full text-sm text-left">
+                        <tbody id="detail-history-body" class="divide-y divide-gray-100"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- NAVBAR -->
+    <nav class="bg-white border-b border-gray-200 sticky top-0 z-40 shadow-sm">
+        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <div class="bg-teal-600 text-white p-2 rounded-lg"><i class="fa-solid fa-staff-snake text-lg"></i></div>
+                <div>
+                    <h1 class="font-bold text-gray-800 text-lg leading-tight">Smart Pharma Stock by Jarunyoo</h1>
+                    <p class="text-xs text-teal-600 font-semibold">Professional Edition</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <button onclick="toggleLoginModal(true)" class="public-only bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-teal-700 transition">
+                    <i class="fa-solid fa-key mr-2"></i> Login
+                </button>
+                <div class="admin-only flex items-center gap-3">
+                    <span class="text-xs font-bold text-teal-700 bg-teal-50 px-3 py-1 rounded-full border border-teal-100">Pharmacist (Admin)</span>
+                    <button onclick="logout()" class="text-red-400 hover:text-red-600"><i class="fa-solid fa-power-off text-lg"></i></button>
+                </div>
+                <button onclick="fetchData()" class="text-gray-400 hover:text-teal-600"><i class="fa-solid fa-sync text-lg"></i></button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="flex flex-1 overflow-hidden">
+        <!-- SIDEBAR -->
+        <aside class="w-64 bg-white border-r border-gray-200 flex flex-col hidden md:flex admin-only">
+            <div class="p-4 space-y-1">
+                <p class="px-3 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-2">Overview</p>
+                <button onclick="switchTab('dashboard')" class="menu-item w-full text-left px-3 py-2 rounded-lg text-gray-600 hover:bg-teal-50 hover:text-teal-700 font-medium flex items-center gap-3 transition">
+                    <i class="fa-solid fa-chart-pie w-5 text-center"></i> Dashboard
+                </button>
+                
+                <p class="px-3 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-4">Operation</p>
+                <button onclick="switchTab('inbound')" class="menu-item w-full text-left px-3 py-2 rounded-lg text-gray-600 hover:bg-teal-50 hover:text-teal-700 font-medium flex items-center gap-3 transition">
+                    <i class="fa-solid fa-truck-medical w-5 text-center"></i> 1. รับยาเข้า (Inbound)
+                </button>
+                <button onclick="switchTab('transfer')" class="menu-item w-full text-left px-3 py-2 rounded-lg text-gray-600 hover:bg-teal-50 hover:text-teal-700 font-medium flex items-center gap-3 transition">
+                    <i class="fa-solid fa-dolly w-5 text-center"></i> 2. เบิกห้องยา (Transfer)
+                </button>
+                <button onclick="switchTab('outbound')" class="menu-item w-full text-left px-3 py-2 rounded-lg text-gray-600 hover:bg-teal-50 hover:text-teal-700 font-medium flex items-center gap-3 transition">
+                    <i class="fa-solid fa-hand-holding-medical w-5 text-center"></i> 3. จ่ายยา (Dispensing)
+                </button>
+                
+                <p class="px-3 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-4">Management</p>
+                <button onclick="switchTab('adjust')" class="menu-item w-full text-left px-3 py-2 rounded-lg text-gray-600 hover:bg-red-50 hover:text-red-700 font-medium flex items-center gap-3 transition">
+                    <i class="fa-solid fa-wrench w-5 text-center"></i> 4. ปรับยอด (Adjust)
+                </button>
+                <button onclick="switchTab('import')" class="menu-item w-full text-left px-3 py-2 rounded-lg text-blue-600 bg-blue-50 hover:bg-blue-100 font-medium flex items-center gap-3 transition border border-blue-100">
+                    <i class="fa-solid fa-file-excel w-5 text-center"></i> 5. นำเข้าข้อมูล (Import)
+                </button>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="flex-1 overflow-y-auto p-4 md:p-8 bg-slate-50 relative" id="main-content">
+            
+            <!-- VIEW: DASHBOARD -->
+            <div id="view-dashboard" class="page-view space-y-6 max-w-7xl mx-auto">
+                <!-- Public Banner -->
+                <div class="public-only bg-gradient-to-r from-teal-500 to-emerald-600 rounded-xl p-6 text-white shadow-lg flex items-center gap-4">
+                    <div class="bg-white/20 p-3 rounded-full"><i class="fa-solid fa-eye text-2xl"></i></div>
+                    <div>
+                        <h3 class="text-lg font-bold">Dashboard แสดงข้อมูลยา รพ.สต.บ้านขวาว</h3>
+                        <p class="text-teal-100 text-sm">แสดงยอดคงเหลือปัจจุบัน หากต้องการทำรายการกรุณาเข้าสู่ระบบ</p>
+                    </div>
+                </div>
+
+                <!-- Stats -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="glass-panel p-4 border-l-4 border-blue-500">
+                        <p class="text-xs text-gray-500 font-bold uppercase">คลังใหญ่ (Main)</p>
+                        <h2 class="text-2xl font-bold text-gray-800 mt-1" id="stat-main-items">0</h2>
+                    </div>
+                    <div class="glass-panel p-4 border-l-4 border-teal-500">
+                        <p class="text-xs text-gray-500 font-bold uppercase">ห้องยา (OPD)</p>
+                        <h2 class="text-2xl font-bold text-gray-800 mt-1" id="stat-opd-items">0</h2>
+                    </div>
+                    <div class="glass-panel p-4 border-l-4 border-orange-500">
+                        <p class="text-xs text-gray-500 font-bold uppercase">ใกล้หมดอายุ</p>
+                        <h2 class="text-2xl font-bold text-gray-800 mt-1" id="stat-expire">0</h2>
+                    </div>
+                     <div class="glass-panel p-4 border-l-4 border-gray-500">
+                        <p class="text-xs text-gray-500 font-bold uppercase">มูลค่ารวม</p>
+                        <h2 class="text-2xl font-bold text-gray-800 mt-1" id="stat-value">0</h2>
+                    </div>
+                </div>
+
+                <!-- Search -->
+                <div class="flex gap-4">
+                    <div class="relative flex-1">
+                        <input type="text" id="search-input" onkeyup="filterTables()" placeholder="ค้นหาชื่อยา, ชื่อการค้า, Lot..." class="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-teal-500">
+                        <i class="fa-solid fa-search absolute left-3 top-3 text-gray-400"></i>
+                    </div>
+                </div>
+
+                <!-- Tables -->
+                <div class="grid xl:grid-cols-2 gap-6">
+                    <div class="glass-panel flex flex-col h-[500px]">
+                        <div class="p-4 border-b bg-gray-50 rounded-t-xl font-bold text-gray-700">Stock คลังใหญ่ (Main)</div>
+                        <div class="overflow-auto flex-1">
+                            <table class="w-full text-sm text-left" id="table-main">
+                                <thead class="bg-white sticky top-0 shadow-sm text-xs uppercase text-gray-500">
+                                    <tr><th class="px-4 py-3">ชื่อยา (Generic/Trade)</th><th class="px-4 py-3">Lot/Exp</th><th class="px-4 py-3 text-right">Qty</th></tr>
+                                </thead>
+                                <tbody class="divide-y text-gray-600"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="glass-panel flex flex-col h-[500px]">
+                        <div class="p-4 border-b bg-gray-50 rounded-t-xl font-bold text-gray-700">Stock ห้องยา (OPD)</div>
+                        <div class="overflow-auto flex-1">
+                            <table class="w-full text-sm text-left" id="table-opd">
+                                <thead class="bg-white sticky top-0 shadow-sm text-xs uppercase text-gray-500">
+                                    <tr><th class="px-4 py-3">ชื่อยา</th><th class="px-4 py-3">สถานะ</th><th class="px-4 py-3 text-right">Qty</th></tr>
+                                </thead>
+                                <tbody class="divide-y text-gray-600"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: INBOUND (Standard Form) -->
+            <div id="view-inbound" class="page-view admin-only hidden">
+                <div class="max-w-4xl mx-auto glass-panel p-6">
+                    <h2 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2"><i class="fa-solid fa-truck-medical text-blue-600"></i> รับยาเข้าคลังใหญ่ (Standard Inbound)</h2>
+                    <form id="form-inbound" class="space-y-6">
+                        
+                        <!-- 1. ข้อมูลยา -->
+                        <div>
+                            <h3 class="form-section-title">1. ข้อมูลยา (Drug Information)</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div><label class="form-label">ชื่อสามัญทางยา (Generic Name) *</label><input type="text" name="genericName" required class="form-input" placeholder="e.g. Paracetamol"></div>
+                                <div><label class="form-label">ชื่อการค้า (Trade Name)</label><input type="text" name="tradeName" class="form-input" placeholder="e.g. Sara"></div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div><label class="form-label">รูปแบบ (Form)</label>
+                                        <select name="dosageForm" class="form-input bg-white">
+                                            <option value="Tablet">Tablet (เม็ด)</option>
+                                            <option value="Capsule">Capsule (แคปซูล)</option>
+                                            <option value="Syrup">Syrup (ยาน้ำ)</option>
+                                            <option value="Injection">Injection (ยาฉีด)</option>
+                                            <option value="Cream">Cream (ครีม)</option>
+                                            <option value="Other">Other</option>
+                                        </select>
+                                    </div>
+                                    <div><label class="form-label">ความแรง (Strength)</label><input type="text" name="strength" class="form-input" placeholder="e.g. 500 mg"></div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div><label class="form-label">กลุ่มบัญชี</label>
+                                        <select name="category" class="form-input bg-white">
+                                            <option value="ED">ED (ยาในบัญชี)</option>
+                                            <option value="NED">NED (ยานอกบัญชี)</option>
+                                        </select>
+                                    </div>
+                                    <div><label class="form-label">VED Analysis</label>
+                                        <select name="ved" class="form-input bg-white">
+                                            <option value="V">Vital (ช่วยชีวิต)</option>
+                                            <option value="E">Essential (จำเป็น)</option>
+                                            <option value="N">Non-essential (ทั่วไป)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 2. ข้อมูลล๊อตและการจัดซื้อ -->
+                        <div>
+                            <h3 class="form-section-title">2. การจัดซื้อและสต็อก (Procurement & Stock)</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div><label class="form-label">Lot No. *</label><input type="text" name="lot" required class="form-input"></div>
+                                <div><label class="form-label">วันหมดอายุ *</label><input type="date" name="expDate" required class="form-input"></div>
+                                <div><label class="form-label text-blue-700">จำนวนรับ (Unit) *</label><input type="number" name="qty" required min="1" class="form-input border-blue-300 bg-blue-50 font-bold"></div>
+                                
+                                <div><label class="form-label">ราคาต่อหน่วย (บาท)</label><input type="number" name="price" step="0.01" class="form-input"></div>
+                                <div><label class="form-label">เลขที่ใบส่งของ (Invoice)</label><input type="text" name="invoiceNo" class="form-input"></div>
+                                <div><label class="form-label">ปีงบประมาณ</label><input type="text" name="budgetYear" class="form-input" value="2567"></div>
+                                
+                                <div><label class="form-label">ผู้ผลิต (Manufacturer)</label><input type="text" name="manufacturer" class="form-input"></div>
+                                <div><label class="form-label">ผู้จำหน่าย (Supplier)</label><input type="text" name="supplier" class="form-input"></div>
+                                <div><label class="form-label">วันที่รับเข้า</label><input type="date" name="inboundDate" required class="form-input"></div>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-blue-700 transition">บันทึกรับเข้า (Save)</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- VIEW: TRANSFER -->
+            <div id="view-transfer" class="page-view admin-only hidden">
+                <div class="max-w-2xl mx-auto glass-panel p-6">
+                    <h2 class="text-xl font-bold text-gray-800 mb-6"><i class="fa-solid fa-dolly text-teal-600 mr-2"></i> เบิกยาเข้าห้องยา (Transfer)</h2>
+                    <form id="form-transfer" class="space-y-4">
+                        <div>
+                            <label class="form-label">เลือกรายการ (จากคลังใหญ่)</label>
+                            <select id="transfer-select-item" class="form-input bg-white" onchange="updateTransferMax()"></select>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="form-label">จำนวนเบิก</label>
+                                <input type="number" id="transfer-qty" required class="form-input font-bold text-teal-700">
+                                <p class="text-xs text-gray-500 mt-1">คงเหลือ: <span id="transfer-max">0</span></p>
+                            </div>
+                            <div>
+                                <label class="form-label">วันที่เบิก</label>
+                                <input type="date" id="transfer-date" required class="form-input">
+                            </div>
+                        </div>
+                        <div><label class="form-label">หมายเหตุ/ผู้เบิก</label><input type="text" id="transfer-remark" class="form-input"></div>
+                        <button type="submit" class="w-full bg-teal-600 text-white py-3 rounded-xl font-bold shadow hover:bg-teal-700">ยืนยันการเบิก</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- VIEW: OUTBOUND (HN Removed) -->
+            <div id="view-outbound" class="page-view admin-only hidden">
+                <div class="max-w-2xl mx-auto glass-panel p-6">
+                    <h2 class="text-xl font-bold text-gray-800 mb-6"><i class="fa-solid fa-hand-holding-medical text-green-600 mr-2"></i> จ่ายยา (Dispensing)</h2>
+                    <div class="space-y-5">
+                        <div class="bg-green-50 p-4 rounded-xl border border-green-200">
+                            <label class="form-label text-green-800">เลือกยาจาก OPD Stock</label>
+                            <select id="outbound-select-item" class="form-input bg-white" onchange="updateOutboundMax()"></select>
+                        </div>
+                        <div class="grid grid-cols-1 gap-4">
+                            <div>
+                                <label class="form-label">จำนวนที่จ่าย</label>
+                                <input type="number" id="outbound-qty" required class="form-input font-bold text-gray-800 text-lg">
+                                <p class="text-xs text-gray-500 mt-1">คงเหลือ OPD: <span id="outbound-max">0</span></p>
+                            </div>
+                            <!-- HN/Reference Removed as requested -->
+                        </div>
+                         <div><label class="form-label">ผู้จ่ายยา (Dispenser)</label><input type="text" id="outbound-by" value="Admin" class="form-input"></div>
+                        <button onclick="submitOutbound()" class="w-full bg-green-600 text-white py-3 rounded-xl font-bold shadow hover:bg-green-700">บันทึกการจ่าย</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: ADJUST -->
+            <div id="view-adjust" class="page-view admin-only hidden">
+                <div class="max-w-2xl mx-auto glass-panel p-6 border-t-4 border-red-500">
+                    <h2 class="text-xl font-bold text-gray-800 mb-6"><i class="fa-solid fa-wrench text-red-600 mr-2"></i> ปรับยอด (Adjust)</h2>
+                    <form id="form-adjust" class="space-y-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><label class="form-label">คลัง</label><select id="adjust-location" class="form-input bg-white" onchange="loadAdjustItems()"><option value="Main">Main</option><option value="OPD">OPD</option></select></div>
+                            <div><label class="form-label">รายการ</label><select id="adjust-item" class="form-input bg-white"><option>Loading...</option></select></div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><label class="form-label">ประเภท</label><select id="adjust-type" class="form-input bg-white"><option value="Remove">ตัดออก (เสียหาย/หมดอายุ)</option><option value="Add">รับคืน/เกิน</option></select></div>
+                            <div><label class="form-label">จำนวน</label><input type="number" id="adjust-qty" required class="form-input"></div>
+                        </div>
+                        <div><label class="form-label">สาเหตุ</label><input type="text" id="adjust-reason" required class="form-input"></div>
+                        <button type="submit" class="w-full bg-gray-700 text-white py-3 rounded-xl font-bold hover:bg-gray-800">ยืนยันปรับยอด</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- VIEW: IMPORT (Excel) -->
+            <div id="view-import" class="page-view admin-only hidden">
+                <div class="max-w-4xl mx-auto glass-panel p-8">
+                    <div class="flex items-center gap-4 mb-8 border-b pb-4">
+                        <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600 text-2xl"><i class="fa-solid fa-file-excel"></i></div>
+                        <div>
+                            <h2 class="text-2xl font-bold text-gray-800">นำเข้าข้อมูลจาก Excel</h2>
+                            <p class="text-gray-500">ระบบ Batch Import สำหรับข้อมูลจำนวนมาก</p>
+                        </div>
+                    </div>
+
+                    <div class="mb-6">
+                        <label class="form-label">1. เลือกประเภทการนำเข้า</label>
+                        <select id="import-type" class="form-input bg-white" onchange="updateTemplateInfo()">
+                            <option value="BATCH_INBOUND">📦 รับยาเข้า (Standard Inbound)</option>
+                            <option value="BATCH_TRANSFER">🔄 โอนย้าย (Transfer)</option>
+                            <option value="BATCH_OUTBOUND">💊 จ่ายยา (Outbound)</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-6 bg-blue-50 p-4 rounded-xl border border-blue-100 text-sm text-blue-800">
+                        <p class="font-bold mb-2"><i class="fa-solid fa-circle-info mr-1"></i> รูปแบบคอลัมน์ที่ต้องการ (เรียงตามลำดับ):</p>
+                        <p id="template-guide" class="font-mono bg-white px-2 py-1 rounded border border-blue-200 break-words">
+                            GenericName, TradeName, Form, Strength, Lot, ExpDate, Qty, Price
+                        </p>
+                    </div>
+
+                    <div class="mb-8">
+                         <div class="flex justify-between items-center mb-2">
+                            <label class="form-label mb-0">2. เลือกไฟล์ .xlsx</label>
+                            <button onclick="downloadTemplate()" class="text-sm text-blue-600 hover:text-blue-800 underline font-medium flex items-center gap-1">
+                                <i class="fa-solid fa-download"></i> ดาวน์โหลดไฟล์ตัวอย่าง (Template)
+                            </button>
+                        </div>
+                        <label class="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition">
+                            <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                                <i class="fa-solid fa-cloud-arrow-up text-3xl text-gray-400 mb-3"></i>
+                                <p class="text-sm text-gray-500">คลิกเพื่อเลือกไฟล์ Excel</p>
+                            </div>
+                            <input id="excel-file" type="file" class="hidden" accept=".xlsx, .csv" onchange="handleFileSelect(event)" />
+                        </label>
+                    </div>
+
+                    <div id="import-preview" class="hidden mb-6">
+                        <h3 class="font-bold text-gray-700 mb-2">ตัวอย่างข้อมูล (<span id="preview-count">0</span> รายการ)</h3>
+                        <div class="overflow-x-auto border rounded-lg max-h-60">
+                            <table class="w-full text-sm text-left">
+                                <thead class="bg-gray-100 text-xs uppercase" id="preview-head"></thead>
+                                <tbody class="bg-white divide-y" id="preview-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <button id="btn-import-confirm" onclick="submitImport()" disabled class="w-full bg-gray-300 text-white py-3 rounded-xl font-bold transition cursor-not-allowed">ยืนยันการนำเข้าข้อมูล</button>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        const API_URL = 'https://script.google.com/macros/s/AKfycbwt5RcoQApeQnPLiDhsmnX8nqwFh8ki1u0-LwVrzHutorifGF_gpZRQSGUJZcy9IGzdVw/exec'; // *** ใส่ URL ของ GAS Deploy ***
+        
+        let stockData = { main: [], opd: [], logs: [] };
+        let importData = [];
+        let isLoggedIn = false;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const today = new Date().toISOString().split('T')[0];
+            document.querySelectorAll('input[type="date"]').forEach(el => el.value = today);
+            checkLoginStatus();
+            fetchData();
+        });
+
+        // --- AUTH ---
+        function toggleLoginModal(show) { document.getElementById('login-modal').classList.toggle('hidden', !show); }
+        document.getElementById('login-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            if(document.getElementById('username').value === 'admin') {
+                isLoggedIn = true;
+                toggleLoginModal(false);
+                checkLoginStatus();
+                Swal.fire({ icon: 'success', title: 'ยินดีต้อนรับเภสัชกร', timer: 1500, showConfirmButton: false });
+            }
+        });
+        function logout() { isLoggedIn = false; checkLoginStatus(); switchTab('dashboard'); }
+        function checkLoginStatus() {
+            document.body.classList.toggle('logged-in', isLoggedIn);
+        }
+
+        // --- DATA ---
+        async function fetchData() {
+            Swal.showLoading();
+            try {
+                const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'GET_INIT_DATA' }) }).then(r=>r.json());
+                if(res.status === 'success') {
+                    // MAPPING FIX: Map backend response keys to frontend keys
+                    stockData.main = res.data.stockMain || [];
+                    stockData.opd = res.data.stockOPD || [];
+                    stockData.logs = res.data.logs || [];
+                    
+                    renderDashboard();
+                    Swal.close();
+                }
+            } catch(e) { Swal.fire('Error', e.message, 'error'); }
+        }
+
+        // --- RENDER ---
+        function renderDashboard() {
+            // Calculate Stats
+            // Safety check: ensure arrays exist before filtering
+            const mainList = stockData.main || [];
+            const opdList = stockData.opd || [];
+            
+            const mainItems = mainList.filter(i=>i.Qty>0).length;
+            const opdItems = opdList.filter(i=>i.Qty>0).length;
+            const totalVal = mainList.reduce((sum, i) => sum + (Number(i.Qty||0) * Number(i.Price||0)), 0);
+            
+            document.getElementById('stat-main-items').innerText = mainItems;
+            document.getElementById('stat-opd-items').innerText = opdItems;
+            document.getElementById('stat-value').innerText = totalVal.toLocaleString();
+            
+            filterTables();
+            updateSelectOptions();
+        }
+
+        function renderTable(id, data, filter="") {
+            const tbody = document.querySelector(`#${id} tbody`);
+            tbody.innerHTML = '';
+            
+            // Safety check
+            if (!data) return;
+
+            const filtered = data.filter(i => {
+                if(!filter && i.Qty == 0) return false;
+                const search = (i.GenericName + i.TradeName + i.Lot).toLowerCase();
+                return search.includes(filter.toLowerCase());
+            });
+
+            if(filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-gray-400">ไม่พบข้อมูล</td></tr>`;
+                return;
+            }
+
+            filtered.forEach(i => {
+                const tr = document.createElement('tr');
+                tr.className = 'clickable-row border-b last:border-0 hover:bg-gray-50';
+                tr.onclick = () => showDetail(i);
+                
+                const nameDisplay = `<div class="font-bold text-gray-700">${i.TradeName || '-'}</div><div class="text-xs text-gray-500">${i.GenericName || i.DrugName}</div>`;
+                const lotDisplay = `<div class="text-sm">${i.Lot}</div><div class="text-xs text-red-400">${formatDate(i.ExpDate)}</div>`;
+                
+                if(id === 'table-main') {
+                    tr.innerHTML = `<td class="px-4 py-2">${nameDisplay}</td><td class="px-4 py-2">${lotDisplay}</td><td class="px-4 py-2 text-right font-bold text-blue-600">${Number(i.Qty).toLocaleString()}</td>`;
+                } else {
+                    let status = i.Qty > 0 ? '<span class="text-green-600 text-xs">● ปกติ</span>' : '<span class="text-gray-400 text-xs">● หมด</span>';
+                    tr.innerHTML = `<td class="px-4 py-2">${nameDisplay}</td><td class="px-4 py-2">${status}</td><td class="px-4 py-2 text-right font-bold text-teal-600">${Number(i.Qty).toLocaleString()}</td>`;
+                }
+                tbody.appendChild(tr);
+            });
+        }
+        
+        function filterTables() {
+            const val = document.getElementById('search-input').value;
+            renderTable('table-main', stockData.main, val);
+            renderTable('table-opd', stockData.opd, val);
+        }
+
+        function showDetail(item) {
+            document.getElementById('detail-modal').classList.remove('hidden');
+            document.getElementById('detail-trade').innerText = item.TradeName || 'No Trade Name';
+            document.getElementById('detail-generic').innerText = item.GenericName || item.DrugName;
+            
+            // Map standard fields
+            document.getElementById('detail-form').innerText = item.DosageForm || '-';
+            document.getElementById('detail-strength').innerText = item.Strength || '-';
+            document.getElementById('detail-cat').innerText = item.Category || '-';
+            document.getElementById('detail-ved').innerText = item.VED || '-';
+            
+            document.getElementById('detail-lot').innerText = item.Lot;
+            document.getElementById('detail-exp').innerText = formatDate(item.ExpDate);
+            document.getElementById('detail-qty').innerText = Number(item.Qty).toLocaleString();
+            
+            document.getElementById('detail-mfg').innerText = item.Manufacturer || '-';
+            document.getElementById('detail-inv').innerText = item.InvoiceNo || '-';
+            document.getElementById('detail-budget').innerText = item.BudgetYear || '-';
+            document.getElementById('detail-price').innerText = Number(item.Price || 0).toLocaleString();
+
+            // Logs
+            const logs = (stockData.logs || []).filter(l => l.DrugID === item.DrugID).reverse();
+            const logBody = document.getElementById('detail-history-body');
+            logBody.innerHTML = logs.length ? '' : '<tr><td class="p-4 text-center text-gray-400">ไม่มีประวัติ</td></tr>';
+            logs.forEach(l => {
+                logBody.innerHTML += `
+                    <tr class="border-b">
+                        <td class="px-4 py-2 text-xs text-gray-500">${formatDate(l.Timestamp, true)}</td>
+                        <td class="px-4 py-2 font-bold text-xs uppercase">${l.Type}</td>
+                        <td class="px-4 py-2 text-right font-bold">${l.Qty}</td>
+                        <td class="px-4 py-2 text-xs text-gray-500">${l.From} -> ${l.To}</td>
+                    </tr>`;
+            });
+        }
+
+        function toggleDetailModal(show) { document.getElementById('detail-modal').classList.toggle('hidden', !show); }
+
+        // --- FORM HANDLERS ---
+        // 1. Inbound (Standard)
+        document.getElementById('form-inbound').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fd = new FormData(e.target);
+            const payload = Object.fromEntries(fd.entries());
+            if(await sendAction('INBOUND', payload)) e.target.reset();
+        });
+
+        // 2. Transfer
+        document.getElementById('form-transfer').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const val = document.getElementById('transfer-select-item').value;
+            if(!val) return;
+            const item = JSON.parse(val);
+            const payload = {
+                drugId: item.DrugID, drugName: item.DrugName, lot: item.Lot,
+                qty: document.getElementById('transfer-qty').value,
+                transferDate: document.getElementById('transfer-date').value,
+                remark: document.getElementById('transfer-remark').value
+            };
+            if(await sendAction('TRANSFER', payload)) document.getElementById('form-transfer').reset();
+        });
+
+        // 3. Outbound (No HN)
+        async function submitOutbound() {
+            const val = document.getElementById('outbound-select-item').value;
+            if(!val) return;
+            const item = JSON.parse(val);
+            const payload = {
+                drugId: item.DrugID, drugName: item.DrugName, lot: item.Lot,
+                qty: document.getElementById('outbound-qty').value,
+                dispenser: document.getElementById('outbound-by').value
+            };
+            if(await sendAction('OUTBOUND', payload)) {
+                document.getElementById('outbound-qty').value = '';
+            }
+        }
+        
+        // 4. Adjust
+         document.getElementById('form-adjust').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const val = document.getElementById('adjust-item').value;
+            if(!val) return;
+            const item = JSON.parse(val);
+            const payload = {
+                location: document.getElementById('adjust-location').value,
+                drugId: item.DrugID, drugName: item.DrugName, lot: item.Lot,
+                qty: document.getElementById('adjust-qty').value,
+                type: document.getElementById('adjust-type').value,
+                reason: document.getElementById('adjust-reason').value
+            };
+            if(await sendAction('ADJUST', payload)) document.getElementById('form-adjust').reset();
+        });
+
+        // --- EXCEL IMPORT LOGIC ---
+        const templates = {
+            'BATCH_INBOUND': { cols: ['GenericName', 'TradeName', 'Form', 'Strength', 'Lot', 'ExpDate', 'Qty', 'Price'], desc: 'ชื่อสามัญ, ชื่อการค้า, รูปแบบ, ความแรง, Lot, วันหมดอายุ, จำนวน, ราคา' },
+            'BATCH_TRANSFER': { cols: ['DrugID', 'Lot', 'Qty', 'Remark'], desc: 'รหัสยา (ถ้ามี), Lot, จำนวน, หมายเหตุ' },
+            'BATCH_OUTBOUND': { cols: ['DrugID', 'Lot', 'Qty'], desc: 'รหัสยา, Lot, จำนวน' }
+        };
+
+        function updateTemplateInfo() {
+            const type = document.getElementById('import-type').value;
+            document.getElementById('template-guide').innerText = templates[type].desc;
+            resetImport();
+        }
+
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {type: 'array'});
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                const json = XLSX.utils.sheet_to_json(sheet, {header: 1});
+                processImport(json);
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function processImport(rows) {
+            if(rows.length < 2) return Swal.fire('Error', 'ไม่พบข้อมูล', 'error');
+            const type = document.getElementById('import-type').value;
+            const dataRows = rows.slice(1);
+            
+            importData = dataRows.map(r => {
+                if(type === 'BATCH_INBOUND') {
+                    return { genericName: r[0], tradeName: r[1], dosageForm: r[2], strength: r[3], lot: r[4], expDate: r[5], qty: r[6], price: r[7] };
+                } else {
+                    return { drugId: r[0], lot: r[1], qty: r[2], remark: r[3] }; // Simple map for Transfer/Outbound
+                }
+            }).filter(i => i.qty);
+
+            document.getElementById('preview-count').innerText = importData.length;
+            const tbody = document.getElementById('preview-body');
+            tbody.innerHTML = importData.slice(0,5).map(i => `<tr class="border-b text-xs"><td class="p-2">${Object.values(i).join(' | ')}</td></tr>`).join('');
+            
+            document.getElementById('import-preview').classList.remove('hidden');
+            const btn = document.getElementById('btn-import-confirm');
+            btn.disabled = false;
+            btn.classList.remove('bg-gray-300', 'cursor-not-allowed');
+            btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+        }
+        
+        function resetImport() {
+            importData = [];
+            document.getElementById('excel-file').value = '';
+            document.getElementById('import-preview').classList.add('hidden');
+            const btn = document.getElementById('btn-import-confirm');
+            btn.disabled = true;
+            btn.classList.add('bg-gray-300', 'cursor-not-allowed');
+            btn.classList.remove('bg-blue-600');
+        }
+
+        async function submitImport() {
+            if(!importData.length) return;
+            const type = document.getElementById('import-type').value;
+            if(await sendAction(type, importData)) {
+                resetImport();
+            }
+        }
+
+        function downloadTemplate() {
+            const type = document.getElementById('import-type').value;
+            let headers = [];
+            let data = [];
+            let filename = "template.xlsx";
+
+            if(type === 'BATCH_INBOUND') {
+                headers = ['GenericName', 'TradeName', 'Form', 'Strength', 'Lot', 'ExpDate', 'Qty', 'Price'];
+                data = [
+                    ['Paracetamol', 'Sara', 'Tablet', '500 mg', 'LOT-001', '2026-12-31', 1000, 1.5],
+                    ['Amoxicillin', 'Amoxil', 'Capsule', '500 mg', 'LOT-002', '2025-06-30', 500, 3.0],
+                    ['Vitamin C', 'C-Vit', 'Tablet', '1000 mg', 'LOT-003', '2026-01-15', 200, 5.0]
+                ];
+                filename = "template_inbound.xlsx";
+            } else if (type === 'BATCH_TRANSFER') {
+                headers = ['DrugID', 'Lot', 'Qty', 'Remark'];
+                data = [['PARACETAMOL-500MG-TABLET', 'LOT-001', 100, 'Weekly Request']]; // Example ID based on logic
+                filename = "template_transfer.xlsx";
+            } else {
+                headers = ['DrugID', 'Lot', 'Qty'];
+                data = [['PARACETAMOL-500MG-TABLET', 'LOT-001', 10]];
+                filename = "template_outbound.xlsx";
+            }
+
+            const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Template");
+            XLSX.writeFile(wb, filename);
+        }
+
+        // --- UTILS ---
+        function switchTab(id) {
+            document.querySelectorAll('.page-view').forEach(e => e.classList.add('hidden'));
+            if(id === 'dashboard' || isLoggedIn) document.getElementById(`view-${id}`).classList.remove('hidden');
+            else Swal.fire('Access Denied', 'Please Login', 'warning');
+        }
+        function updateSelectOptions() {
+            const populate = (id, data) => {
+                const el = document.getElementById(id);
+                // Safety check for data
+                if (!data) return;
+                el.innerHTML = '<option value="">-- เลือกรายการ --</option>' + data.filter(i=>i.Qty>0).map(i => `<option value='${JSON.stringify(i)}'>${i.TradeName||i.GenericName} (${i.Lot})</option>`).join('');
+            };
+            populate('transfer-select-item', stockData.main || []);
+            populate('outbound-select-item', stockData.opd || []);
+            populate('adjust-item', document.getElementById('adjust-location').value === 'Main' ? (stockData.main || []) : (stockData.opd || []));
+        }
+        function updateTransferMax() { 
+            const val = document.getElementById('transfer-select-item').value;
+            if(val) document.getElementById('transfer-max').innerText = JSON.parse(val).Qty;
+        }
+        function updateOutboundMax() {
+            const val = document.getElementById('outbound-select-item').value;
+            if(val) document.getElementById('outbound-max').innerText = JSON.parse(val).Qty;
+        }
+        function loadAdjustItems() { updateSelectOptions(); }
+        
+        function formatDate(d, time=false) {
+            if(!d) return '-';
+            try {
+                if(time) {
+                     return new Date(d).toLocaleString('th-TH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                }
+                return new Date(d).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
+            } catch (e) {
+                return new Date(d).toLocaleDateString(); // Fallback
+            }
+        }
+
+        async function sendAction(action, payload) {
+            Swal.fire({ title: 'Processing...', didOpen: () => Swal.showLoading() });
+            try {
+                const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action, payload }) }).then(r=>r.json());
+                if(res.status === 'success') {
+                    await fetchData();
+                    Swal.fire('Success', res.data.message, 'success');
+                    return true;
+                } else throw new Error(res.message);
+            } catch(e) { Swal.fire('Error', e.message, 'error'); return false; }
+        }
+    </script>
+</body>
+</html>
