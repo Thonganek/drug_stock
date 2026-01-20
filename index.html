@@ -39,12 +39,49 @@
         body:not(.logged-in) .admin-only { display: none !important; }
         body.logged-in .public-only { display: none !important; }
         .clickable-row:hover { background-color: #f0fdfa !important; cursor: pointer; }
+
+        /* Mobile Sidebar Transition */
+        #sidebar-overlay { transition: opacity 0.3s ease-in-out; }
+        aside { transition: transform 0.3s ease-in-out; }
+
+        /* Print Styles */
+        @media print {
+            @page { size: A4; margin: 1cm; }
+            body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            nav, #sidebar-overlay, #mobile-menu-btn, .no-print, .btn-action, button:not(.hidden) { display: none !important; }
+            
+            /* Sidebar hidden unless we want it, usually reports don't need sidebar */
+            aside { display: none !important; }
+            
+            /* Reset Layout for Print */
+            main { margin: 0 !important; padding: 0 !important; overflow: visible !important; height: auto !important; width: 100% !important; }
+            .page-view { display: none; }
+            .page-view:not(.hidden) { display: block !important; }
+            
+            /* Modal Print override */
+            #detail-modal:not(.hidden) { 
+                position: static !important; background: white !important; padding: 0 !important; 
+                display: block !important; height: auto !important; overflow: visible !important;
+            }
+            #detail-modal .bg-white { box-shadow: none !important; max-width: 100% !important; max-height: none !important; overflow: visible !important; }
+            
+            /* Hide backdrop when printing modal */
+            .modal-bg { background: white !important; position: static !important; }
+            
+            /* Table Styling for Print */
+            table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+            th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; }
+            thead { background-color: #f0f0f0 !important; color: black !important; }
+            
+            /* Specific Section Adjustments */
+            .glass-panel { box-shadow: none; border: none; }
+        }
     </style>
 </head>
-<body class="flex flex-col h-screen overflow-hidden">
+<body class="flex flex-col h-screen overflow-hidden bg-slate-50">
 
-    <!-- LOGIN MODAL -->
-    <div id="login-modal" class="fixed inset-0 z-50 flex items-center justify-center modal-bg hidden">
+    <!-- LOGIN MODAL (Z-Index increased to 60) -->
+    <div id="login-modal" class="fixed inset-0 z-[60] flex items-center justify-center modal-bg hidden no-print">
         <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-sm mx-4 relative">
             <button onclick="toggleLoginModal(false)" class="absolute top-4 right-4 text-gray-400"><i class="fa-solid fa-times"></i></button>
             <div class="text-center mb-6">
@@ -61,20 +98,29 @@
         </div>
     </div>
 
-    <!-- DETAIL MODAL (Full Standard Info) -->
-    <div id="detail-modal" class="fixed inset-0 z-50 flex items-center justify-center modal-bg hidden" onclick="if(event.target === this) toggleDetailModal(false)">
+    <!-- DETAIL MODAL (Z-Index increased to 60) -->
+    <div id="detail-modal" class="fixed inset-0 z-[60] flex items-center justify-center modal-bg hidden" onclick="if(event.target === this) toggleDetailModal(false)">
         <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl mx-4 flex flex-col max-h-[90vh]">
-            <div class="px-6 py-4 border-b bg-gray-50 flex justify-between items-center rounded-t-xl">
+            <div class="px-6 py-4 border-b bg-gray-50 flex justify-between items-center rounded-t-xl no-print">
                 <div class="flex items-center gap-3">
                     <div class="bg-teal-100 p-2 rounded-lg text-teal-700"><i class="fa-solid fa-file-prescription text-xl"></i></div>
                     <div>
-                        <h2 class="text-lg font-bold text-gray-800" id="detail-trade">-</h2>
-                        <p class="text-sm text-gray-500 font-medium" id="detail-generic">-</p>
+                        <h2 class="text-lg font-bold text-gray-800" id="detail-trade-header">รายละเอียด</h2>
                     </div>
                 </div>
-                <button onclick="toggleDetailModal(false)" class="text-gray-400 hover:text-red-500"><i class="fa-solid fa-times text-xl"></i></button>
+                <div class="flex gap-2">
+                    <button onclick="window.print()" class="text-gray-500 hover:text-blue-600 px-3 py-1 rounded border border-gray-200 hover:bg-gray-50"><i class="fa-solid fa-print"></i> Print</button>
+                    <button onclick="toggleDetailModal(false)" class="text-gray-400 hover:text-red-500 px-2"><i class="fa-solid fa-times text-xl"></i></button>
+                </div>
             </div>
-            <div class="p-6 overflow-y-auto bg-slate-50">
+            
+            <!-- Printable Content -->
+            <div class="p-6 overflow-y-auto bg-slate-50 flex-1" id="detail-print-area">
+                <div class="mb-4">
+                    <h1 class="text-2xl font-bold text-gray-800" id="detail-trade">-</h1>
+                    <p class="text-lg text-gray-600 font-medium" id="detail-generic">-</p>
+                </div>
+
                 <!-- Info Grid -->
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                     <!-- 1. Clinical Info -->
@@ -112,8 +158,16 @@
                 </div>
                 <!-- History Table -->
                 <div class="bg-white rounded-lg border shadow-sm overflow-hidden">
-                    <div class="px-4 py-2 bg-gray-100 border-b text-xs font-bold text-gray-500 uppercase">Transaction Log</div>
+                    <div class="px-4 py-2 bg-gray-100 border-b text-xs font-bold text-gray-500 uppercase">Transaction Log (Card Stock)</div>
                     <table class="w-full text-sm text-left">
+                        <thead class="bg-gray-50 text-xs uppercase text-gray-500">
+                            <tr>
+                                <th class="px-4 py-2">Date/Time</th>
+                                <th class="px-4 py-2">Action</th>
+                                <th class="px-4 py-2 text-right">Qty</th>
+                                <th class="px-4 py-2">Note</th>
+                            </tr>
+                        </thead>
                         <tbody id="detail-history-body" class="divide-y divide-gray-100"></tbody>
                     </table>
                 </div>
@@ -125,9 +179,14 @@
     <nav class="bg-white border-b border-gray-200 sticky top-0 z-40 shadow-sm">
         <div class="container mx-auto px-4 py-3 flex justify-between items-center">
             <div class="flex items-center gap-3">
+                <!-- Mobile Menu Button -->
+                <button id="mobile-menu-btn" onclick="toggleSidebar()" class="md:hidden text-gray-500 hover:text-teal-600 focus:outline-none p-2 rounded hover:bg-gray-100">
+                    <i class="fa-solid fa-bars text-xl"></i>
+                </button>
+                
                 <div class="bg-teal-600 text-white p-2 rounded-lg"><i class="fa-solid fa-staff-snake text-lg"></i></div>
                 <div>
-                    <h1 class="font-bold text-gray-800 text-lg leading-tight">Smart Pharma Stock by Jarunyoo</h1>
+                    <h1 class="font-bold text-gray-800 text-lg leading-tight">Smart Pharma Stock</h1>
                     <p class="text-xs text-teal-600 font-semibold">Professional Edition</p>
                 </div>
             </div>
@@ -136,7 +195,7 @@
                     <i class="fa-solid fa-key mr-2"></i> Login
                 </button>
                 <div class="admin-only flex items-center gap-3">
-                    <span class="text-xs font-bold text-teal-700 bg-teal-50 px-3 py-1 rounded-full border border-teal-100">Pharmacist (Admin)</span>
+                    <span class="hidden sm:inline text-xs font-bold text-teal-700 bg-teal-50 px-3 py-1 rounded-full border border-teal-100">Pharmacist (Admin)</span>
                     <button onclick="logout()" class="text-red-400 hover:text-red-600"><i class="fa-solid fa-power-off text-lg"></i></button>
                 </div>
                 <button onclick="fetchData()" class="text-gray-400 hover:text-teal-600"><i class="fa-solid fa-sync text-lg"></i></button>
@@ -144,13 +203,29 @@
         </div>
     </nav>
 
-    <div class="flex flex-1 overflow-hidden">
+    <div class="flex flex-1 overflow-hidden relative">
+        <!-- MOBILE OVERLAY -->
+        <div id="sidebar-overlay" onclick="toggleSidebar(false)" class="fixed inset-0 bg-black/50 z-40 hidden md:hidden cursor-pointer transition-opacity duration-300 opacity-0" style="opacity: 0;"></div>
+
         <!-- SIDEBAR -->
-        <aside class="w-64 bg-white border-r border-gray-200 flex flex-col hidden md:flex admin-only">
-            <div class="p-4 space-y-1">
+        <!-- Fixed positioning on mobile, relative on desktop -->
+        <aside id="sidebar" class="admin-only fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 flex flex-col transform -translate-x-full md:translate-x-0 md:relative md:flex transition-transform duration-300">
+             <div class="p-4 flex justify-between items-center md:hidden border-b bg-gray-50">
+                <span class="font-bold text-teal-700 flex items-center gap-2"><i class="fa-solid fa-bars"></i> Menu</span>
+                <button onclick="toggleSidebar(false)" class="text-gray-400 hover:text-red-500 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-200 transition"><i class="fa-solid fa-times text-lg"></i></button>
+            </div>
+            
+            <div class="p-4 space-y-1 overflow-y-auto flex-1">
                 <p class="px-3 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-2">Overview</p>
                 <button onclick="switchTab('dashboard')" class="menu-item w-full text-left px-3 py-2 rounded-lg text-gray-600 hover:bg-teal-50 hover:text-teal-700 font-medium flex items-center gap-3 transition">
-                    <i class="fa-solid fa-chart-pie w-5 text-center"></i> Dashboard
+                    <i class="fa-solid fa-chart-pie w-5 text-center"></i> ภาพรวม (Dashboard)
+                </button>
+                <!-- Added Stock Links -->
+                <button onclick="switchTab('dashboard'); scrollToPanel('panel-main')" class="menu-item w-full text-left px-3 py-1.5 rounded-lg text-gray-500 hover:bg-teal-50 hover:text-teal-600 text-sm flex items-center gap-3 transition pl-10">
+                    <i class="fa-solid fa-circle text-[0.5rem]"></i> Stock คลังใหญ่ (Main)
+                </button>
+                 <button onclick="switchTab('dashboard'); scrollToPanel('panel-opd')" class="menu-item w-full text-left px-3 py-1.5 rounded-lg text-gray-500 hover:bg-teal-50 hover:text-teal-600 text-sm flex items-center gap-3 transition pl-10">
+                    <i class="fa-solid fa-circle text-[0.5rem]"></i> Stock ห้องยา (OPD)
                 </button>
                 
                 <p class="px-3 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-4">Operation</p>
@@ -177,10 +252,13 @@
                     <i class="fa-solid fa-bell w-5 text-center"></i> 6. แจ้งเตือน (Alerts)
                 </button>
             </div>
+            <div class="p-4 border-t text-center text-xs text-gray-400">
+                v1.2.3 Mobile & UI Fixed
+            </div>
         </aside>
 
         <!-- MAIN CONTENT -->
-        <main class="flex-1 overflow-y-auto p-4 md:p-8 bg-slate-50 relative" id="main-content">
+        <main class="flex-1 overflow-y-auto p-4 md:p-8 bg-slate-50 relative w-full" id="main-content">
             
             <!-- VIEW: DASHBOARD -->
             <div id="view-dashboard" class="page-view space-y-6 max-w-7xl mx-auto">
@@ -223,7 +301,7 @@
 
                 <!-- Tables -->
                 <div class="grid xl:grid-cols-2 gap-6">
-                    <div class="glass-panel flex flex-col h-[500px]">
+                    <div id="panel-main" class="glass-panel flex flex-col h-[500px]">
                         <div class="p-4 border-b bg-gray-50 rounded-t-xl font-bold text-gray-700">Stock คลังใหญ่ (Main)</div>
                         <div class="overflow-auto flex-1">
                             <table class="w-full text-sm text-left" id="table-main">
@@ -234,7 +312,7 @@
                             </table>
                         </div>
                     </div>
-                    <div class="glass-panel flex flex-col h-[500px]">
+                    <div id="panel-opd" class="glass-panel flex flex-col h-[500px]">
                         <div class="p-4 border-b bg-gray-50 rounded-t-xl font-bold text-gray-700">Stock ห้องยา (OPD)</div>
                         <div class="overflow-auto flex-1">
                             <table class="w-full text-sm text-left" id="table-opd">
@@ -443,14 +521,25 @@
             <div id="view-alerts" class="page-view admin-only hidden">
                 <div class="max-w-6xl mx-auto space-y-6">
                     <div class="glass-panel p-6">
-                        <div class="flex items-center gap-3 mb-4">
-                            <div class="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center text-orange-600 text-2xl">
-                                <i class="fa-solid fa-bell"></i>
+                        <div class="flex justify-between items-start mb-6 no-print">
+                             <div class="flex items-center gap-3">
+                                <div class="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center text-orange-600 text-2xl">
+                                    <i class="fa-solid fa-bell"></i>
+                                </div>
+                                <div>
+                                    <h2 class="text-2xl font-bold text-gray-800">แจ้งเตือนสถานะคลังยา</h2>
+                                    <p class="text-gray-500">รายการยาที่ต้องเฝ้าระวังและจัดการ</p>
+                                </div>
                             </div>
-                            <div>
-                                <h2 class="text-2xl font-bold text-gray-800">แจ้งเตือนสถานะคลังยา</h2>
-                                <p class="text-gray-500">รายการยาที่ต้องเฝ้าระวังและจัดการ</p>
-                            </div>
+                            <button onclick="window.print()" class="bg-gray-800 hover:bg-gray-900 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold shadow-sm">
+                                <i class="fa-solid fa-print"></i> พิมพ์รายงาน
+                            </button>
+                        </div>
+
+                        <!-- Print Header (Visible only on print) -->
+                        <div class="hidden text-center mb-6" style="display: none;" id="print-header-alert">
+                            <h1 class="text-xl font-bold">รายงานสถานะคลังยาและเวชภัณฑ์</h1>
+                            <p class="text-sm">วันที่พิมพ์: <span class="print-date"></span></p>
                         </div>
 
                         <!-- 1. ใกล้หมดอายุ -->
@@ -531,6 +620,12 @@
         document.addEventListener('DOMContentLoaded', () => {
             const today = new Date().toISOString().split('T')[0];
             document.querySelectorAll('input[type="date"]').forEach(el => el.value = today);
+            
+            // Set print date
+            document.querySelectorAll('.print-date').forEach(el => {
+                el.innerText = new Date().toLocaleDateString('th-TH');
+            });
+            
             checkLoginStatus();
             fetchData();
         });
@@ -546,9 +641,50 @@
                 Swal.fire({ icon: 'success', title: 'ยินดีต้อนรับเภสัชกร', timer: 1500, showConfirmButton: false });
             }
         });
-        function logout() { isLoggedIn = false; checkLoginStatus(); switchTab('dashboard'); }
+        function logout() { isLoggedIn = false; checkLoginStatus(); switchTab('dashboard'); toggleSidebar(false); }
         function checkLoginStatus() {
             document.body.classList.toggle('logged-in', isLoggedIn);
+        }
+
+        // --- MOBILE SIDEBAR (Updated for robust open/close) ---
+        function toggleSidebar(forceOpen = null) {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            
+            // Check current state by checking if -translate-x-full class is missing (meaning it's visible on mobile)
+            const isVisible = !sidebar.classList.contains('-translate-x-full');
+
+            if (forceOpen === true) {
+                // Force Open
+                sidebar.classList.remove('-translate-x-full');
+                overlay.classList.remove('hidden');
+                setTimeout(() => overlay.style.opacity = '1', 10); // Fade in
+            } else if (forceOpen === false) {
+                // Force Close
+                sidebar.classList.add('-translate-x-full');
+                overlay.style.opacity = '0';
+                setTimeout(() => overlay.classList.add('hidden'), 300); // Wait for transition
+            } else {
+                // Toggle
+                if (isVisible) {
+                    // Close
+                    sidebar.classList.add('-translate-x-full');
+                    overlay.style.opacity = '0';
+                    setTimeout(() => overlay.classList.add('hidden'), 300);
+                } else {
+                    // Open
+                    sidebar.classList.remove('-translate-x-full');
+                    overlay.classList.remove('hidden');
+                    setTimeout(() => overlay.style.opacity = '1', 10);
+                }
+            }
+        }
+        
+        function scrollToPanel(id) {
+             const element = document.getElementById(id);
+             if(element) {
+                 element.scrollIntoView({behavior: 'smooth', block: 'start'});
+             }
         }
 
         // --- DATA ---
@@ -907,6 +1043,9 @@
             document.querySelectorAll('.page-view').forEach(e => e.classList.add('hidden'));
             if(id === 'dashboard' || isLoggedIn) document.getElementById(`view-${id}`).classList.remove('hidden');
             else Swal.fire('Access Denied', 'Please Login', 'warning');
+            
+            // Auto close mobile sidebar when switching tabs
+            toggleSidebar(false);
         }
         function updateSelectOptions() {
             const populate = (id, data) => {
